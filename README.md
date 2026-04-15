@@ -1,111 +1,272 @@
-# Multi-Container Runtime
-
-A lightweight Linux container runtime in C with a long-running supervisor and a kernel-space memory monitor.
-
-Read [`project-guide.md`](project-guide.md) for the full project specification.
+# OS Jackfruit – Container Runtime Project
 
 ---
 
-## Getting Started
+## 1. Team Information
 
-### 1. Fork the Repository
+* Name: Shantanu Tandel
 
-1. Go to [github.com/shivangjhalani/OS-Jackfruit](https://github.com/shivangjhalani/OS-Jackfruit)
-2. Click **Fork** (top-right)
-3. Clone your fork:
+* SRN: PES2UG24CS456
+
+* Name: Sanyam Deven Hiran
+
+* SRN: PES2UG24CS446
+
+---
+
+## 2. Build, Load, and Run Instructions
+
+### Build the Project
 
 ```bash
-git clone https://github.com/<your-username>/OS-Jackfruit.git
-cd OS-Jackfruit
+make clean
+make
 ```
 
-### 2. Set Up Your VM
+---
 
-You need an **Ubuntu 22.04 or 24.04** VM with **Secure Boot OFF**. WSL will not work.
-
-Install dependencies:
+### Load Kernel Module
 
 ```bash
-sudo apt update
-sudo apt install -y build-essential linux-headers-$(uname -r)
+sudo insmod monitor.ko
 ```
 
-### 3. Run the Environment Check
+Verify device:
 
 ```bash
-cd boilerplate
-chmod +x environment-check.sh
-sudo ./environment-check.sh
+ls -l /dev/container_monitor
 ```
 
-Fix any issues reported before moving on.
+---
 
-### 4. Prepare the Root Filesystem
+### Start Supervisor
 
 ```bash
-mkdir rootfs-base
-wget https://dl-cdn.alpinelinux.org/alpine/v3.20/releases/x86_64/alpine-minirootfs-3.20.3-x86_64.tar.gz
-tar -xzf alpine-minirootfs-3.20.3-x86_64.tar.gz -C rootfs-base
+sudo ./engine supervisor ./rootfs-base
+```
 
-# Make one writable copy per container you plan to run
+---
+
+### Prepare Container Root Filesystems
+
+```bash
 cp -a ./rootfs-base ./rootfs-alpha
 cp -a ./rootfs-base ./rootfs-beta
 ```
 
-Do not commit `rootfs-base/` or `rootfs-*` directories to your repository.
+---
 
-### 5. Understand the Boilerplate
-
-The `boilerplate/` folder contains starter files:
-
-| File                   | Purpose                                             |
-| ---------------------- | --------------------------------------------------- |
-| `engine.c`             | User-space runtime and supervisor skeleton          |
-| `monitor.c`            | Kernel module skeleton                              |
-| `monitor_ioctl.h`      | Shared ioctl command definitions                    |
-| `Makefile`             | Build targets for both user-space and kernel module |
-| `cpu_hog.c`            | CPU-bound test workload                             |
-| `io_pulse.c`           | I/O-bound test workload                             |
-| `memory_hog.c`         | Memory-consuming test workload                      |
-| `environment-check.sh` | VM environment preflight check                      |
-
-Use these as your starting point. You are free to restructure the repository however you want — the submission requirements are listed in the project guide.
-
-### 6. Build and Verify
+### Start Containers
 
 ```bash
-cd boilerplate
-make
+./engine start alpha ./rootfs-alpha /bin/sh
+./engine start beta ./rootfs-beta /bin/sh
 ```
-
-If this compiles without errors, your environment is ready.
-
-### 7. GitHub Actions Smoke Check
-
-Your fork will inherit a minimal GitHub Actions workflow from this repository.
-
-That workflow only performs CI-safe checks:
-
-- `make -C boilerplate ci`
-- user-space binary compilation (`engine`, `memory_hog`, `cpu_hog`, `io_pulse`)
-- `./boilerplate/engine` with no arguments must print usage and exit with a non-zero status
-
-The CI-safe build command is:
-
-```bash
-make -C boilerplate ci
-```
-
-This smoke check does not test kernel-module loading, supervisor runtime behavior, or container execution.
 
 ---
 
-## What to Do Next
+### CLI Commands
 
-Read [`project-guide.md`](project-guide.md) end to end. It contains:
+```bash
+./engine ps
+./engine logs alpha
+./engine stats
+./engine stop alpha
+./engine stop beta
+```
 
-- The six implementation tasks (multi-container runtime, CLI, logging, kernel monitor, scheduling experiments, cleanup)
-- The engineering analysis you must write
-- The exact submission requirements, including what your `README.md` must contain (screenshots, analysis, design decisions)
+---
 
-Your fork's `README.md` should be replaced with your own project documentation as described in the submission package section of the project guide. (As in get rid of all the above content and replace with your README.md)
+### Run Workloads
+
+Copy workload binaries into container rootfs:
+
+```bash
+cp cpu_hog ./rootfs-alpha/
+cp io_pulse ./rootfs-alpha/
+```
+
+Run inside container:
+
+```bash
+./cpu_hog
+./io_pulse
+```
+
+---
+
+### Inspect Kernel Logs
+
+```bash
+dmesg | tail
+```
+
+---
+
+### Unload Kernel Module
+
+```bash
+sudo rmmod monitor
+```
+
+---
+
+## 3. Demo with Screenshots
+
+### Screenshot 1: Multi-container supervision
+
+![alt text](image.png)
+
+Two containers running under a single supervisor process.
+
+---
+
+### Screenshot 2: Metadata tracking
+
+![alt text](image-1.png)
+
+Output of `engine ps` showing container ID, PID, and status.
+
+---
+
+### Screenshot 3: Bounded-buffer logging
+
+![alt text](screenshots/ss3.png)
+
+Log output captured from container execution demonstrating logging pipeline.
+
+---
+
+### Screenshot 4: CLI and IPC
+
+![alt text](screenshots/ss4.png)
+
+Command issued from CLI and corresponding supervisor response via FIFO IPC.
+
+---
+
+### Screenshot 5: Soft-limit warning
+
+![alt text](screenshots/ss5.png)
+
+Memory usage output from kernel monitor (`engine stats`) demonstrating monitoring capability.
+
+---
+
+### Screenshot 6: Hard-limit enforcement
+
+![alt text](screenshots/ss6.png)
+
+Container termination (`engine stop`) and updated metadata reflecting stopped state.
+
+---
+
+### Screenshot 7: Scheduling experiment
+
+![alt text](screenshots/ss7.png)
+
+Execution of CPU-bound and I/O-bound workloads showing observable differences.
+
+---
+
+### Screenshot 8: Clean teardown
+
+![alt text](screenshots/ss8.png)
+
+System state showing no zombie processes after container termination.
+
+---
+
+## 4. Engineering Analysis
+
+### Namespace Isolation
+
+Linux namespaces provide isolation for processes. PID, UTS, and mount namespaces ensure containers have independent process trees, hostnames, and filesystem views.
+
+### Supervisor Model
+
+A centralized supervisor simplifies container management. It maintains metadata and handles lifecycle operations, reducing complexity in CLI commands.
+
+### IPC Mechanisms
+
+FIFO-based IPC enables communication between CLI and supervisor. This approach is simple and effective for command-based interaction.
+
+### Logging Pipeline
+
+Pipe-based logging captures container output. This follows a producer-consumer model where containers produce logs and the supervisor consumes and stores them.
+
+### Kernel Monitoring
+
+The kernel module uses `task_struct` to access process memory information. This allows direct observation of process resource usage from kernel space.
+
+---
+
+## 5. Design Decisions and Tradeoffs
+
+### Namespace Isolation
+
+* Choice: Use Linux namespaces via `clone()`
+* Tradeoff: Limited isolation compared to full container systems
+* Justification: Simpler implementation suitable for educational purposes
+
+---
+
+### Supervisor Architecture
+
+* Choice: Single supervisor process
+* Tradeoff: Blocking operations can limit concurrency
+* Justification: Easier state management and debugging
+
+---
+
+### IPC and Logging
+
+* Choice: FIFO and pipe-based communication
+* Tradeoff: Blocking I/O may reduce responsiveness
+* Justification: Straightforward implementation with clear data flow
+
+---
+
+### Kernel Monitor
+
+* Choice: Character device with ioctl interface
+* Tradeoff: Limited to basic metrics
+* Justification: Direct kernel interaction demonstrates OS concepts effectively
+
+---
+
+### Scheduling Experiments
+
+* Choice: CPU-bound and I/O-bound workloads
+* Tradeoff: Limited control over scheduler internals
+* Justification: Clearly demonstrates scheduling differences
+
+---
+
+## 6. Scheduler Experiment Results
+
+### Workloads Used
+
+* CPU-bound: `cpu_hog`
+* I/O-bound: `io_pulse`
+
+---
+
+### Observations
+
+| Workload  | Behavior                             |
+| --------- | ------------------------------------ |
+| CPU-bound | High CPU usage, continuous execution |
+| I/O-bound | Periodic execution, waiting on I/O   |
+
+---
+
+### Result
+
+The Linux scheduler allocates CPU time differently based on workload type. CPU-bound processes utilize continuous CPU cycles, while I/O-bound processes yield CPU during wait periods, allowing fair scheduling.
+
+---
+
+## Conclusion
+
+This project demonstrates a container runtime built using Linux system programming techniques, integrating user-space container management with kernel-level monitoring.

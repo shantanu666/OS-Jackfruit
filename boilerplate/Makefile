@@ -1,5 +1,6 @@
 obj-m += monitor.o
-
+ccflags-y += -Wno-error
+ccflags-y += -Wno-unused-function
 KDIR := /lib/modules/$(shell uname -r)/build
 PWD := $(shell pwd)
 # If you want host-built workload binaries to run directly inside an Alpine
@@ -39,3 +40,4 @@ clean:
 	rm -f /tmp/mini_runtime.sock
 
 .PHONY: all ci module clean
+
